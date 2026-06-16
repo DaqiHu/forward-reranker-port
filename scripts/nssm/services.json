@@ -1,0 +1,16 @@
+{
+  "$schema": null,
+  "_comment": "NSSM 服务配置。enabled: true 的服务会被 install.ps1 注册为 Windows 服务。",
+  "services": [
+    {
+      "name": "forward-reranker",
+      "displayName": "Forward Reranker Adapter",
+      "description": "Rerank API adapter — forwards /v1/rerank to Ollama /api/chat (port 11435)",
+      "script": "dist/server.js",
+      "env": {
+        "NODE_ENV": "production"
+      },
+      "enabled": true
+    }
+  ]
+}
