@@ -8,6 +8,9 @@ dist/
 logs/
 *.log
 
+# Data (telemetry)
+data/
+
 # Environment (local overrides only)
 .env.local
 

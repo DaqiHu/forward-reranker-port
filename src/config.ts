@@ -44,6 +44,9 @@ export const MAX_CONCURRENCY =
 /** 日志目录 — 未设置时由 logger.ts 根据 NODE_ENV 自动选择 */
 export const LOGS_DIR = process.env.LOGS_DIR || "";
 
+/** 数据目录（telemetry.db 等） — 未设置时自动选择 */
+export const DATA_DIR = process.env.DATA_DIR || "";
+
 /** 分数解析失败时的默认值 */
 export const DEFAULT_SCORE = 0.0;
 
