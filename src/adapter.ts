@@ -1,5 +1,6 @@
 import {
   OLLAMA_BASE_URL,
+  OLLAMA_CHAT_PATH,
   OLLAMA_MODEL,
   OLLAMA_TIMEOUT_MS,
   MAX_CONCURRENCY,
@@ -86,7 +87,7 @@ async function scoreDocument(
     stream: false,
   };
 
-  const resp = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
+  const resp = await fetch(`${OLLAMA_BASE_URL}${OLLAMA_CHAT_PATH}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),

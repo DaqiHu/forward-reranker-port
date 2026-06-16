@@ -22,6 +22,17 @@ export const OLLAMA_BASE_URL =
 export const OLLAMA_MODEL =
   process.env.OLLAMA_MODEL || "qwen3-rerank-8b";
 
+/** Ollama chat API 路径 */
+export const OLLAMA_CHAT_PATH =
+  process.env.OLLAMA_CHAT_PATH || "/api/chat";
+
+/** 拦截为 Rerank 的路径列表（逗号分隔） */
+export const RERANK_PATHS =
+  (process.env.RERANK_PATHS || "/v1/rerank,/api/v1/rerank")
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean);
+
 /** 单次 Ollama 请求超时 (ms) */
 export const OLLAMA_TIMEOUT_MS =
   Number(process.env.OLLAMA_TIMEOUT_MS) || 60_000;

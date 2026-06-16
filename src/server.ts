@@ -1,6 +1,11 @@
 import express from "express";
 import http from "node:http";
-import { HTTP_PORT, OLLAMA_BASE_URL, OLLAMA_MODEL } from "./config.js";
+import {
+  HTTP_PORT,
+  OLLAMA_BASE_URL,
+  OLLAMA_MODEL,
+  RERANK_PATHS,
+} from "./config.js";
 import { validateRequest, rerank } from "./adapter.js";
 import { createLogger } from "./logger.js";
 import type { RerankRequest } from "./adapter.js";
@@ -45,8 +50,10 @@ function handleRerank(req: express.Request, res: express.Response) {
     });
 }
 
-app.post("/v1/rerank", handleRerank);
-app.post("/api/v1/rerank", handleRerank);
+// 动态注册 rerank 拦截路由
+for (const path of RERANK_PATHS) {
+  app.post(path, handleRerank);
+}
 
 // ── GET /health ───────────────────────────────────────────────
 
