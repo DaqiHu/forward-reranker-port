@@ -11,8 +11,11 @@ const app = express();
 app.use(express.json({ limit: "1mb" }));
 
 // ── POST /v1/rerank ── 特殊处理：转换请求体 → Ollama /api/chat ─
+// Cherry Studio 作为 OpenAI 提供商时发 /v1/rerank
+// Cherry Studio 作为 Ollama 提供商时发 /api/v1/rerank
+// 两个路径统一拦截处理
 
-app.post("/v1/rerank", async (req, res) => {
+function handleRerank(req: express.Request, res: express.Response) {
   const err = validateRequest(req.body);
   if (err) {
     log.warn({ err }, "invalid rerank request");
@@ -23,23 +26,27 @@ app.post("/v1/rerank", async (req, res) => {
   const body = req.body as RerankRequest;
 
   log.info(
-    { query: body.query.slice(0, 120), docs: body.documents.length },
+    { query: body.query.slice(0, 120), docs: body.documents.length, path: req.path },
     "rerank request",
   );
 
-  try {
-    const result = await rerank(body, log);
-    log.info(
-      { topScore: result.results[0]?.score, count: result.results.length },
-      "rerank completed",
-    );
-    res.json(result);
-  } catch (err) {
-    const message = (err as Error).message;
-    log.error({ err: message }, "rerank failed");
-    res.status(502).json({ error: `Rerank failed: ${message}` });
-  }
-});
+  rerank(body, log)
+    .then((result) => {
+      log.info(
+        { topScore: result.results[0]?.score, count: result.results.length },
+        "rerank completed",
+      );
+      res.json(result);
+    })
+    .catch((err) => {
+      const message = (err as Error).message;
+      log.error({ err: message }, "rerank failed");
+      res.status(502).json({ error: `Rerank failed: ${message}` });
+    });
+}
+
+app.post("/v1/rerank", handleRerank);
+app.post("/api/v1/rerank", handleRerank);
 
 // ── GET /health ───────────────────────────────────────────────
 
