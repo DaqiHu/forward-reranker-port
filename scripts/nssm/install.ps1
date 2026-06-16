@@ -177,12 +177,14 @@ Write-Host "==============================================" -ForegroundColor Cya
 Write-Host "  Installation complete." -ForegroundColor Green
 Write-Host ""
 Write-Host "  Manage services:" -ForegroundColor White
-Write-Host "    nssm status lan-paste" -ForegroundColor Gray
-Write-Host "    nssm start  lan-paste" -ForegroundColor Gray
-Write-Host "    nssm stop   lan-paste" -ForegroundColor Gray
-Write-Host "    nssm restart lan-paste" -ForegroundColor Gray
-Write-Host "    services.msc          (GUI)" -ForegroundColor Gray
+foreach ($s in $enabled) {
+    Write-Host "    nssm status  $($s.name)" -ForegroundColor Gray
+    Write-Host "    nssm restart $($s.name)" -ForegroundColor Gray
+}
+Write-Host "    services.msc            (GUI)" -ForegroundColor Gray
 Write-Host ""
 Write-Host "  Check logs:" -ForegroundColor White
-Write-Host "    Get-Content logs\lan-paste.log -Tail 50" -ForegroundColor Gray
+foreach ($s in $enabled) {
+    Write-Host "    Get-Content logs\$($s.name).log -Tail 50" -ForegroundColor Gray
+}
 Write-Host "==============================================" -ForegroundColor Cyan
