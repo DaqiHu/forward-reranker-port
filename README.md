@@ -147,8 +147,16 @@ nssm start forward-reranker
 ```powershell
 .\scripts\nssm\status.ps1    # 状态总览
 nssm restart forward-reranker # 重启
-nssm stop forward-reranker    # 停止
+nssm stop forward-reranker    # 临时停止（下次开机仍会自启）
+nssm start forward-reranker   # 临时启动
 services.msc                  # 图形化管理
+```
+
+`nssm stop` 只管当前进程，不影响开机自启。如需禁止/恢复：
+
+```powershell
+nssm set forward-reranker Start SERVICE_DEMAND_START   # 禁止开机自启
+nssm set forward-reranker Start SERVICE_AUTO_START     # 恢复开机自启
 ```
 
 ## 项目结构
