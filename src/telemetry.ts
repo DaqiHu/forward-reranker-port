@@ -1,4 +1,3 @@
-import Database from "better-sqlite3";
 import path from "node:path";
 import fs from "node:fs";
 import os from "node:os";
@@ -21,54 +20,42 @@ function resolveDataDir(): string {
 
 const dataDir = resolveDataDir();
 fs.mkdirSync(dataDir, { recursive: true });
-const dbPath = path.join(dataDir, "telemetry.db");
+const eventsPath = path.join(dataDir, "telemetry.jsonl");
 
-// ── 数据库 ────────────────────────────────────────────────────
-
-const db = new Database(dbPath);
-db.pragma("journal_mode = WAL");
-db.pragma("busy_timeout = 3000");
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS rerank_events (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    timestamp  TEXT    NOT NULL,
-    duration_ms INTEGER NOT NULL,
-    doc_count  INTEGER NOT NULL,
-    status     TEXT    NOT NULL,
-    error      TEXT
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_rerank_events_ts
-    ON rerank_events(timestamp);
-`);
-
-const insertStmt = db.prepare(`
-  INSERT INTO rerank_events (timestamp, duration_ms, doc_count, status, error)
-  VALUES (?, ?, ?, ?, ?)
-`);
-
-// ── 公开 API ──────────────────────────────────────────────────
+// ── 类型 ──────────────────────────────────────────────────────
 
 export interface RerankEvent {
+  timestamp: string;
   duration_ms: number;
   doc_count: number;
   status: "ok" | "error";
   error?: string;
 }
 
-/** 记录一次 Rerank 请求 */
-export function recordRerank(ev: RerankEvent): void {
-  insertStmt.run(
-    new Date().toISOString(),
-    ev.duration_ms,
-    ev.doc_count,
-    ev.status,
-    ev.error ?? null,
-  );
+// ── 写入 ──────────────────────────────────────────────────────
+
+const writeStream = fs.createWriteStream(eventsPath, { flags: "a" });
+
+/** 记录一次 Rerank 请求（追加一行 JSON 到 telemetry.jsonl） */
+export function recordRerank(ev: Omit<RerankEvent, "timestamp">): void {
+  const entry: RerankEvent = {
+    timestamp: new Date().toISOString(),
+    ...ev,
+  };
+  writeStream.write(JSON.stringify(entry) + "\n");
 }
 
-/** 查询统计 */
+// ── 读取 ──────────────────────────────────────────────────────
+
+function readAll(): RerankEvent[] {
+  if (!fs.existsSync(eventsPath)) return [];
+  const raw = fs.readFileSync(eventsPath, "utf-8").trim();
+  if (!raw) return [];
+  return raw.split("\n").map((line) => JSON.parse(line) as RerankEvent);
+}
+
+// ── 统计 ──────────────────────────────────────────────────────
+
 export interface RerankStats {
   total: number;
   ok: number;
@@ -81,63 +68,52 @@ export interface RerankStats {
 }
 
 export function getStats(): RerankStats {
-  const row = db
-    .prepare(
-      `SELECT
-        COUNT(*)              AS total,
-        SUM(CASE WHEN status = 'ok' THEN 1 ELSE 0 END) AS ok,
-        SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS error,
-        ROUND(AVG(duration_ms), 0) AS avg_ms,
-        ROUND(AVG(doc_count), 1)   AS avg_docs,
-        SUM(CASE WHEN timestamp >= datetime('now', '-1 day') THEN 1 ELSE 0 END) AS last_24h
-      FROM rerank_events`,
-    )
-    .get() as Record<string, number> | undefined;
+  const all = readAll();
+  if (all.length === 0) {
+    return { total: 0, ok: 0, error: 0, avg_ms: 0, p50_ms: 0, p95_ms: 0, avg_docs: 0, last_24h: 0 };
+  }
 
-  // 用子查询取百分位（SQLite 没有 percentile 函数）
-  const p50 = db
-    .prepare(
-      `SELECT duration_ms FROM rerank_events
-       WHERE status = 'ok'
-       ORDER BY duration_ms
-       LIMIT 1 OFFSET (SELECT CAST(COUNT(*) * 0.5 AS INTEGER) FROM rerank_events WHERE status = 'ok')`,
-    )
-    .get() as { duration_ms: number } | undefined;
+  const now = new Date();
+  const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
-  const p95 = db
-    .prepare(
-      `SELECT duration_ms FROM rerank_events
-       WHERE status = 'ok'
-       ORDER BY duration_ms
-       LIMIT 1 OFFSET (SELECT CAST(COUNT(*) * 0.95 AS INTEGER) FROM rerank_events WHERE status = 'ok')`,
-    )
-    .get() as { duration_ms: number } | undefined;
+  const okEvents = all.filter((e) => e.status === "ok");
+  const durations = okEvents.map((e) => e.duration_ms).sort((a, b) => a - b);
+
+  const total = all.length;
+  const okCount = okEvents.length;
+  const errorCount = total - okCount;
+  const avgMs = okCount > 0 ? Math.round(durations.reduce((a, b) => a + b, 0) / okCount) : 0;
+  const avgDocs = total > 0 ? Math.round((all.reduce((a, e) => a + e.doc_count, 0) / total) * 10) / 10 : 0;
+
+  const p50 = percentile(durations, 0.5);
+  const p95 = percentile(durations, 0.95);
+  const last24h = all.filter((e) => new Date(e.timestamp) >= dayAgo).length;
 
   return {
-    total: row?.total ?? 0,
-    ok: row?.ok ?? 0,
-    error: row?.error ?? 0,
-    avg_ms: row?.avg_ms ?? 0,
-    p50_ms: p50?.duration_ms ?? 0,
-    p95_ms: p95?.duration_ms ?? 0,
-    avg_docs: row?.avg_docs ?? 0,
-    last_24h: row?.last_24h ?? 0,
+    total,
+    ok: okCount,
+    error: errorCount,
+    avg_ms: avgMs,
+    p50_ms: p50,
+    p95_ms: p95,
+    avg_docs: avgDocs,
+    last_24h: last24h,
   };
+}
+
+function percentile(sorted: number[], p: number): number {
+  if (sorted.length === 0) return 0;
+  const idx = Math.ceil(sorted.length * p) - 1;
+  return sorted[Math.max(0, Math.min(idx, sorted.length - 1))];
 }
 
 /** 最近 N 条记录 */
 export function getRecent(limit = 20): RerankEvent[] {
-  return db
-    .prepare(
-      `SELECT duration_ms, doc_count, status, error
-       FROM rerank_events
-       ORDER BY timestamp DESC
-       LIMIT ?`,
-    )
-    .all(limit) as RerankEvent[];
+  const all = readAll();
+  return all.slice(-limit).reverse();
 }
 
-/** 关闭数据库（进程退出时调用） */
+/** 关闭写入流（进程退出时调用） */
 export function closeTelemetry(): void {
-  db.close();
+  writeStream.end();
 }
