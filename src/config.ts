@@ -1,8 +1,30 @@
 /**
- * 加载 .env 文件（默认配置，提交到 git）。
+ * 加载 .env 文件（手动解析，兼容所有 Node 版本）。
  * .env.local 不会被加载——它只用于本地覆盖，已加入 .gitignore。
  */
-process.loadEnvFile?.();
+import fs from "node:fs";
+import path from "node:path";
+
+const envPath = path.join(process.cwd(), ".env");
+if (fs.existsSync(envPath)) {
+  const lines = fs.readFileSync(envPath, "utf-8").split("\n");
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eqIdx = trimmed.indexOf("=");
+    if (eqIdx === -1) continue;
+    const key = trimmed.slice(0, eqIdx).trim();
+    let value = trimmed.slice(eqIdx + 1).trim();
+    // strip surrounding quotes
+    if ((value.startsWith("\"") && value.endsWith("\"")) ||
+        (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    if (key && !(key in process.env)) {
+      process.env[key] = value;
+    }
+  }
+}
 
 /**
  * 服务配置常量。所有值均可通过环境变量覆盖（见 .env 默认值）。

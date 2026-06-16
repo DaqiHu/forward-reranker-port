@@ -4,6 +4,7 @@ import {
   OLLAMA_BASE_URL,
   OLLAMA_MODEL,
   RERANK_PATHS,
+  MAX_CONCURRENCY,
 } from "./config.js";
 import { validateRequest, rerank } from "./adapter.js";
 import { createLogger } from "./logger.js";
@@ -125,7 +126,7 @@ app.all("*", async (req, res) => {
 
 app.listen(HTTP_PORT, "0.0.0.0", () => {
   log.info(
-    { port: HTTP_PORT, ollama: OLLAMA_BASE_URL, model: OLLAMA_MODEL },
+    { port: HTTP_PORT, ollama: OLLAMA_BASE_URL, model: OLLAMA_MODEL, concurrency: MAX_CONCURRENCY },
     "adapter started (rerank + transparent proxy)",
   );
   console.log("═══════════════════════════════════════════");
