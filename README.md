@@ -10,18 +10,22 @@ Cherry Studio 支持配置 Reranker API（知识库检索重排序），遵循 `
 
 ```
 Cherry Studio                 本服务(:11435)                 Ollama(:11434)
-┌──────────┐   POST /v1/rerank  ┌──────────────┐   /api/chat   ┌──────────┐
+┌──────────┐   /v1/rerank      ┌──────────────┐   /api/chat   ┌──────────┐
 │  Rerank   │ ────────────────► │  适配层       │ ────────────► │  qwen3-  │
 │  Request  │ ◄──────────────── │  (Express)    │ ◄──────────── │  rerank  │
-│           │   JSON Response   │              │   分数文本     │  -8b     │
-└──────────┘                    └──────────────┘               └──────────┘
+└──────────┘                   │              │               │  -8b     │
+                               │  透明代理     │               └──────────┘
+┌──────────┐   /v1/models      │              │   /v1/models  ┌──────────┐
+│ 模型列表  │ ────────────────► │  直接透传 ────────────────► │  Ollama  │
+│  按钮     │ ◄──────────────── │              │ ◄──────────── │          │
+└──────────┘                   └──────────────┘               └──────────┘
 ```
 
-适配层做的事：
-1. 接收标准 `/v1/rerank` 请求 (`query` + `documents[]`)
-2. 为每个文档构造 prompt，逐条请求 Ollama `/api/chat`
-3. 从 Ollama 返回的文本中解析数字分数
-4. 收集所有分数 → 排序 → 组装为标准 Rerank 响应返回
+适配层有两种模式：
+- **`/v1/rerank`**：拦截 → prompt 转换 → Ollama `/api/chat` → 分数解析 → 标准响应
+- **其他所有请求**（`/v1/models`、`/v1/chat/completions` 等）：**透明代理**，原样转发到 Ollama
+
+这使得 Cherry Studio 的「获取模型列表」按钮也能正常工作——它调 `GET /v1/models`，适配层直接透传到 Ollama。
 
 ## 快速开始
 
@@ -63,10 +67,23 @@ MAX_CONCURRENCY=4
 
 ## Cherry Studio 配置
 
+由于适配层是透明代理，**同一个地址可以同时用作 Chat 和 Rerank 提供商**：
+
+### Rerank 提供商
+
 1. 打开 Cherry Studio → 设置 → 模型服务
-2. 添加自定义提供商，类型选择 Rerank
+2. 添加自定义提供商，类型选择 **Rerank**
 3. API 地址填写：`http://localhost:11435`
-4. Cherry Studio 会自动追加 `/v1/rerank`，最终请求 `http://localhost:11435/v1/rerank`
+4. 调用时 Cherry Studio 发 `POST /v1/rerank` → 适配层转换后调 Ollama
+
+### Chat 提供商（可选，获取模型列表）
+
+1. 添加另一个自定义提供商，类型选择 **OpenAI**
+2. API 地址同样填写：`http://localhost:11435`
+3. 点击「获取模型列表」→ Cherry Studio 调 `GET /v1/models` → 适配层透传到 Ollama → 返回已安装的模型
+4. 后续聊天请求 `POST /v1/chat/completions` 也会透传到 Ollama
+
+> **提示**：如果不需要在 Cherry Studio 中聊天（只用 Rerank），Chat 提供商可以不配。
 
 ## 测试
 
